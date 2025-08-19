@@ -1,0 +1,78 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Packaging / build artifacts
+build/
+dist/
+.eggs/
+*.egg-info/
+wheels/
+share/python-wheels/
+*.egg
+.installed.cfg
+
+# Logs
+*.log
+
+# Coverage / testing
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.hypothesis/
+.cache/
+
+# Type checkers
+.mypy_cache/
+.pytype/
+.pyre/
+.dmypy.json
+dmypy.json
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+profile_default/
+
+# dotenv files
+.env
+.env.*
+*.env
+!.env.example
+!env.example
+
+# Editors / IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+
+# Docs
+docs/_build/
+
+# PyInstaller
+*.spec
+
+# Local Python user installs (PEP 582)
+__pypackages__/
+
+# Ruff
+.ruff_cache/
+
+# Python version managers
+.python-version
+
+# Cython
+cython_debug/

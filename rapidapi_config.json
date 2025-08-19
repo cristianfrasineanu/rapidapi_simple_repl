@@ -1,0 +1,16 @@
+{
+  "apis": [
+    {
+      "name": "Instagram Scraper Stable API [Get Post Comments]",
+      "method": "GET",
+      "host": "instagram-scraper-stable-api.p.rapidapi.com",
+      "url": "https://instagram-scraper-stable-api.p.rapidapi.com/get_post_comments.php",
+      "params": [
+        {"name": "media_code", "in": "query", "prompt": "Instagram post code", "default": "DL2G5oIIWya"},
+        {"name": "sort_order", "in": "query", "prompt": "Sort order (popular/recent)", "default": "recent"}
+      ]
+    }
+  ]
+}
+
+
