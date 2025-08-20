@@ -118,11 +118,15 @@ def split_first_array(path: str) -> Tuple[List[str], List[str]]:
 
 
 def save_list_as_csv(
-    rows: List[Dict[str, Any]], out_path: str, fieldnames: Optional[List[str]] = None
+    rows: List[Dict[str, Any]],
+    out_path: str,
+    fieldnames: Optional[List[str]] = None,
+    append: bool = False,
 ) -> None:
     if not rows:
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write("")
+        if not append:
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write("")
         return
 
     if fieldnames is None:
@@ -134,8 +138,10 @@ def save_list_as_csv(
                     seen.add(k)
                     fieldnames.append(k)
 
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(",".join(fieldnames) + "\n")
+    mode = "a" if append else "w"
+    with open(out_path, mode, encoding="utf-8") as f:
+        if not append:
+            f.write(",".join(fieldnames) + "\n")
         for r in rows:
             values = []
             for k in fieldnames:
@@ -150,11 +156,24 @@ def save_list_as_csv(
             f.write(",".join(values) + "\n")
 
 
-def interactive_extract_to_csv(data: Any) -> None:
-    paths_in = input(
-        "Enter one or more dotted paths (comma-separated). Use [] to map arrays, e.g., comments[].text, comments[].user.username: "
-    ).strip()
-    path_list = [p.strip() for p in paths_in.split(",") if p.strip()]
+def interactive_extract_to_csv(
+    data: Any,
+    append: bool = False,
+    saved_path: Optional[str] = None,
+    saved_paths: Optional[List[str]] = None,
+    saved_fieldnames: Optional[List[str]] = None,
+) -> Tuple[Optional[str], Optional[List[str]]]:
+    if append and saved_path and saved_paths and saved_fieldnames:
+        # Auto-append mode: reuse previous settings
+        path_list = saved_paths
+        out = saved_path
+    else:
+        # Interactive mode: ask user for paths and file
+        paths_in = input(
+            "Enter one or more dotted paths (comma-separated). Use [] to map arrays, e.g., comments[].text, comments[].user.username: "
+        ).strip()
+        path_list = [p.strip() for p in paths_in.split(",") if p.strip()]
+        out = ""  # Initialize out variable
 
     try:
         if len(path_list) >= 1 and any("[]" in p for p in path_list):
@@ -197,29 +216,40 @@ def interactive_extract_to_csv(data: Any) -> None:
                         value = json.dumps(value, ensure_ascii=False)
                     row[path_str] = value
                 rows.append(row)
-            out = input("CSV output path (e.g., comments.csv): ").strip() or "comments.csv"
-            save_list_as_csv(rows, out, fieldnames=path_list)
-            print(f"Saved CSV to {out}")
+            if not append:
+                out = input("CSV output path (e.g., comments.csv): ").strip() or "comments.csv"
+            save_list_as_csv(rows, out, fieldnames=path_list, append=append)
+            if append:
+                print(f"Appended {len(rows)} rows to {out}")
+            else:
+                print(f"Saved CSV to {out}")
+            return out, path_list
         else:
             if not path_list:
                 print("No path provided.")
-                return
+                return None, None
             path = path_list[0]
             node = extract_by_path(data, path)
             if not isinstance(node, list):
                 print("Path did not resolve to a list. Include [] for arrays or point to a list.")
-                return
+                return None, None
             rows: List[Dict[str, Any]] = []
             for item in node:
                 if isinstance(item, dict):
                     rows.append(item)
                 else:
                     rows.append({"value": item})
-            out = input("CSV output path (e.g., comments.csv): ").strip() or "comments.csv"
-            save_list_as_csv(rows, out)
-            print(f"Saved CSV to {out}")
+            if not append:
+                out = input("CSV output path (e.g., comments.csv): ").strip() or "comments.csv"
+            save_list_as_csv(rows, out, append=append)
+            if append:
+                print(f"Appended {len(rows)} rows to {out}")
+            else:
+                print(f"Saved CSV to {out}")
+            return out, [path] if not append else saved_paths
     except ValueError as ve:
         print(str(ve))
+        return None, None
 
 
 def build_headers(rapidapi_key: str, host: Optional[str]) -> Dict[str, str]:
@@ -253,37 +283,156 @@ def parse_response(resp) -> Any:
         return {"raw": resp.text}
 
 
+def find_pagination_token(data: Any, field_name: str = "pagination_token") -> Optional[str]:
+    """Recursively find only the configured cursor field token in arbitrary JSON."""
+    cursor: Optional[str] = None
+
+    def recurse(node: Any) -> None:
+        nonlocal cursor
+        if cursor is not None and cursor != "":
+            return
+        if isinstance(node, dict):
+            val = node.get(field_name)
+            if isinstance(val, str) and val:
+                cursor = val
+                print(f"Found {field_name}: {cursor}")
+                return
+            for k, v in node.items():
+                recurse(k)
+                recurse(v)
+                if cursor is not None and cursor != "":
+                    return
+        elif isinstance(node, list):
+            for item in node:
+                recurse(item)
+                if cursor is not None and cursor != "":
+                    return
+        elif isinstance(node, tuple) and len(node) == 2:
+            key, value = node
+            recurse(key)
+            recurse(value)
+        elif isinstance(node, str):
+            s = node.strip()
+            if s.startswith("{") and field_name in s:
+                try:
+                    parsed = json.loads(s)
+                    print(f"Parsed JSON string: {parsed}")
+                    recurse(parsed)
+                except Exception:
+                    pass
+
+    recurse(data)
+    return cursor
+
+
 def build_endpoint_labels(apis: List[Dict[str, Any]]) -> List[str]:
     return [f"{api.get('name')} ({api.get('method', 'GET')} {api.get('url')})" for api in apis]
 
 
-def handle_output_selection(data: Any) -> Optional[str]:
-    out_mode = prompt_choice(
-        "Choose output",
-        [
-            "Pretty JSON",
-            "Save raw JSON to file",
-            "Extract to CSV (by dotted path(s))",
-            "Back to endpoints",
-            "Exit",
-        ],
-    )
-    if out_mode == 0:
-        pretty_print_json(data)
-        return None
-    if out_mode == 1:
-        out = input("Path to save JSON (e.g., output.json): ").strip() or "output.json"
-        with open(out, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        print(f"Saved to {out}")
-        return None
-    if out_mode == 2:
-        interactive_extract_to_csv(data)
-        return None
-    if out_mode == 3:
-        return "back"
+def extract_all_pages_to_csv(
+    data: Any,
+    method: str,
+    url: str,
+    headers: Dict[str, str],
+    query_params: Dict[str, str],
+    body_json: Dict[str, Any],
+    pagination_cfg: Dict[str, Any],
+) -> None:
+    """Extract all paginated data to CSV automatically."""
+    cursor_field_name = pagination_cfg.get("cursor_field")
+    query_param_name = pagination_cfg.get("query_param")
 
-    return "exit"
+    # Get extraction paths from user once
+    paths_in = input(
+        "Enter one or more dotted paths (comma-separated). Use [] to map arrays, e.g., comments[].text, comments[].user.username: "
+    ).strip()
+    path_list = [p.strip() for p in paths_in.split(",") if p.strip()]
+    if not path_list:
+        print("No paths provided.")
+        return
+
+    csv_file = input("CSV output path (e.g., comments.csv): ").strip() or "comments.csv"
+
+    print(f"Starting automatic pagination to {csv_file}...")
+    page_count = 0
+
+    while True:
+        page_count += 1
+        print(f"Processing page {page_count}...")
+
+        try:
+            if len(path_list) >= 1 and any("[]" in p for p in path_list):
+                base_prefix: List[str] = []
+                remainders: List[List[str]] = []
+                for p in path_list:
+                    prefix, rem = split_first_array(p)
+                    if not prefix:
+                        raise ValueError(
+                            "Each path must include an array expression '[]', e.g., comments[].text"
+                        )
+                    if not base_prefix:
+                        base_prefix = prefix
+                    elif base_prefix != prefix:
+                        raise ValueError(
+                            "All paths must share the same array prefix before and including '[]'"
+                        )
+                    remainders.append(rem)
+
+                items = extract_path_values(data, base_prefix)
+                rows: List[Dict[str, Any]] = []
+                for item in items:
+                    row: Dict[str, Any] = {}
+                    for path_str, rem_tokens in zip(path_list, remainders):
+                        vals = extract_path_values(item, rem_tokens)
+                        if len(vals) == 0:
+                            value: Any = ""
+                        elif len(vals) == 1:
+                            value = vals[0]
+                        else:
+                            value = " | ".join(
+                                [
+                                    json.dumps(v, ensure_ascii=False)
+                                    if isinstance(v, (dict, list))
+                                    else str(v)
+                                    for v in vals
+                                ]
+                            )
+                        if isinstance(value, (dict, list)):
+                            value = json.dumps(value, ensure_ascii=False)
+                        row[path_str] = value
+                    rows.append(row)
+
+                # Save to CSV (append after first page)
+                save_list_as_csv(rows, csv_file, fieldnames=path_list, append=(page_count > 1))
+                print(
+                    f"Page {page_count}: {len(rows)} rows {'appended to' if page_count > 1 else 'saved to'} {csv_file}"
+                )
+
+            else:
+                print("Error: Array extraction required for pagination. Use [] in paths.")
+                break
+
+        except Exception as e:
+            print(f"Error extracting page {page_count}: {e}")
+            break
+
+        # Check for next page
+        next_cursor = find_pagination_token(data, cursor_field_name)
+        if not next_cursor:
+            break
+
+        print("Fetching next page...")
+        query_params[query_param_name] = next_cursor
+
+        try:
+            resp = perform_request(method, url, headers, query_params, body_json)
+            print(f"HTTP {resp.status_code}")
+            data = parse_response(resp)
+        except Exception as e:
+            print(f"Request failed: {e}")
+            break
+
+    print(f"Pagination complete! Processed {page_count} pages total.")
 
 
 def run_repl(apis: List[Dict[str, Any]], rapidapi_key: str) -> None:
@@ -301,6 +450,13 @@ def run_repl(apis: List[Dict[str, Any]], rapidapi_key: str) -> None:
         url = resolve_url(url_template, path_params)
         headers = build_headers(rapidapi_key, host)
 
+        pagination_cfg = sel.get("pagination", {}) or {}
+        supports_pagination = bool(pagination_cfg) or any(
+            (p.get("name") == pagination_cfg.get("query_param", "pagination_token"))
+            for p in param_defs
+        )
+        print(f"Pagination enabled: {supports_pagination}")
+
         try:
             resp = perform_request(method, url, headers, query_params, body_json)
         except Exception as e:
@@ -309,11 +465,36 @@ def run_repl(apis: List[Dict[str, Any]], rapidapi_key: str) -> None:
 
         print(f"HTTP {resp.status_code}")
         data = parse_response(resp)
-        action = handle_output_selection(data)
-        if action == "back":
-            continue
-        if action == "exit":
+
+        # Add pagination option to output choices
+        output_choices = [
+            "Pretty JSON",
+            "Save raw JSON to file",
+            "Extract to CSV (by dotted path(s))",
+        ]
+        if supports_pagination:
+            output_choices.append("Extract ALL pages to CSV (auto-paginate)")
+        output_choices.extend(["Back to endpoints", "Exit"])
+
+        out_mode = prompt_choice("Choose output", output_choices)
+
+        if out_mode == 0:
+            pretty_print_json(data)
+        elif out_mode == 1:
+            out = input("Path to save JSON (e.g., output.json): ").strip() or "output.json"
+            with open(out, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"Saved to {out}")
+        elif out_mode == 2:
+            interactive_extract_to_csv(data, append=False)
+        elif supports_pagination and out_mode == 3:
+            extract_all_pages_to_csv(
+                data, method, url, headers, query_params, body_json, pagination_cfg
+            )
+        elif out_mode == len(output_choices) - 2:
             break
+        elif out_mode == len(output_choices) - 1:
+            return
 
 
 def main() -> None:

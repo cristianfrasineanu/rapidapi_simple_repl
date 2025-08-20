@@ -7,8 +7,28 @@
       "url": "https://instagram-scraper-stable-api.p.rapidapi.com/get_post_comments.php",
       "params": [
         {"name": "media_code", "in": "query", "prompt": "Instagram post code", "default": "DL2G5oIIWya"},
-        {"name": "sort_order", "in": "query", "prompt": "Sort order (popular/recent)", "default": "recent"}
-      ]
+        {"name": "sort_order", "in": "query", "prompt": "Sort order (popular/recent)", "default": "recent"},
+        {"name": "pagination_token", "in": "query", "prompt": "Pagination token (leave empty for first page)", "default": ""}
+      ],
+      "pagination": {
+        "cursor_field": "server_cursor",
+        "query_param": "pagination_token"
+      }
+    },
+    {
+      "name": "Instagram Scraper 2025",
+      "method": "GET",
+      "host": "instagram-scraper-20251.p.rapidapi.com",
+      "url": "https://instagram-scraper-20251.p.rapidapi.com/postcomments",
+      "params": [
+        {"name": "code_or_url", "in": "query", "prompt": "Instagram post code", "default": "DL2G5oIIWya"},
+        {"name": "sort_by", "in": "query", "prompt": "Sort order (popular/recent)", "default": "recent"},
+        {"name": "pagination_token", "in": "query", "prompt": "Pagination token (leave empty for first page)", "default": ""}
+      ],
+      "pagination": {
+        "cursor_field": "pagination_token",
+        "query_param": "pagination_token"
+      }
     }
   ]
 }
