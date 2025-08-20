@@ -1,14 +1,15 @@
-## RapidAPI Instagram REPL
+## RapidAPI REPL
 
-Interactive CLI to explore and call your subscribed RapidAPI Instagram endpoints, then export results to JSON or CSV with automatic pagination support.
+Interactive CLI to explore and call your subscribed RapidAPI endpoints, then export results to JSON or CSV with automatic pagination support.
 
 ## Features
 
 - **Multiple output formats**: Pretty JSON, raw JSON files, or structured CSV extraction
 - **Automatic pagination**: Fetch all pages automatically and append to a single CSV
 - **Rate limiting**: Configurable per-endpoint to respect API quotas
-- **Flexible CSV extraction**: Use dotted paths with array notation (e.g., `comments[].text`)
+- **Flexible CSV extraction**: Use dotted paths with array notation (e.g., `items[].name`)
 - **Smart pagination detection**: Automatically finds cursor tokens in API responses
+- **Platform agnostic**: Works with any RapidAPI endpoint (social media, e-commerce, data APIs, etc.)
 
 ### Setup
 - Create and activate a virtual env (macOS/Linux):
@@ -24,20 +25,31 @@ Edit `rapidapi_config.json` to define your API endpoints:
 {
   "apis": [
     {
-      "name": "Instagram Comments API",
+      "name": "E-commerce Products API",
       "method": "GET",
-      "host": "instagram-scraper-api.p.rapidapi.com",
-      "url": "https://instagram-scraper-api.p.rapidapi.com/get_post_comments.php",
+      "host": "ecommerce-api.p.rapidapi.com",
+      "url": "https://ecommerce-api.p.rapidapi.com/products",
       "params": [
-        {"name": "media_code", "in": "query", "prompt": "Instagram post code", "default": "DL2G5oIIWya"},
-        {"name": "sort_order", "in": "query", "prompt": "Sort order (popular/recent)", "default": "recent"},
-        {"name": "pagination_token", "in": "query", "prompt": "Pagination token (leave empty for first page)", "default": ""}
+        {"name": "category", "in": "query", "prompt": "Product category", "default": "electronics"},
+        {"name": "sort", "in": "query", "prompt": "Sort order (price/rating/date)", "default": "price"},
+        {"name": "page_token", "in": "query", "prompt": "Page token (leave empty for first page)", "default": ""}
       ],
       "pagination": {
-        "cursor_field": "cached_comments_cursor",
-        "query_param": "pagination_token"
+        "cursor_field": "next_page_token",
+        "query_param": "page_token"
       },
       "rate_limit": 30
+    },
+    {
+      "name": "Social Media Posts API",
+      "method": "GET", 
+      "host": "social-api.p.rapidapi.com",
+      "url": "https://social-api.p.rapidapi.com/posts",
+      "params": [
+        {"name": "user_id", "in": "query", "prompt": "User ID"},
+        {"name": "limit", "in": "query", "prompt": "Posts per page", "default": "20"}
+      ],
+      "rate_limit": 60
     }
   ]
 }
@@ -82,13 +94,14 @@ chmod a+x rapidapi_repl.py && ./rapidapi_repl.py
 Use dotted paths with array notation to extract nested data:
 
 **Examples:**
-- `comments[]`: Extract all comment objects as separate rows
-- `comments[].text,comments[].user.username`: Extract specific fields
-- `data.posts[].caption,data.posts[].likes_count`: Navigate nested structures
+- `products[]`: Extract all product objects as separate rows  
+- `products[].name,products[].price`: Extract specific fields
+- `data.items[].title,data.items[].category`: Navigate nested structures
+- `results[].user.name,results[].content`: Extract from social media posts
 
 **Pagination workflow:**
 1. Choose "Extract ALL pages to CSV (auto-paginate)"
-2. Enter dotted paths once (e.g., `comments[].text,comments[].user.username`)
+2. Enter dotted paths once (e.g., `products[].name,products[].price`)
 3. Enter CSV filename
 4. System automatically fetches all pages and appends to the same file
 
