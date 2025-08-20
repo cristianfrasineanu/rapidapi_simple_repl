@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import time
 from typing import Any, Dict, List, Tuple, Optional
 
 import requests
@@ -12,6 +13,30 @@ from dotenv import load_dotenv
 def load_config(config_path: str) -> Dict[str, Any]:
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+class RateLimiter:
+    """Simple rate limiter to respect API limits."""
+
+    def __init__(self, requests_per_minute: int = 60):
+        self.requests_per_minute = requests_per_minute
+        self.min_interval = 60.0 / requests_per_minute if requests_per_minute > 0 else 0
+        self.last_request_time = 0.0
+
+    def wait_if_needed(self) -> None:
+        """Wait if necessary to respect rate limits."""
+        if self.min_interval <= 0:
+            return
+
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+
+        if time_since_last < self.min_interval:
+            sleep_time = self.min_interval - time_since_last
+            print(f"Rate limiting: waiting {sleep_time:.1f}s...")
+            time.sleep(sleep_time)
+
+        self.last_request_time = time.time()
 
 
 def prompt_choice(prompt: str, choices: List[str]) -> int:
@@ -265,7 +290,11 @@ def perform_request(
     headers: Dict[str, str],
     query_params: Dict[str, str],
     body_json: Dict[str, Any],
+    rate_limiter: Optional[RateLimiter] = None,
 ):
+    if rate_limiter:
+        rate_limiter.wait_if_needed()
+
     if method == "GET":
         return requests.get(url, headers=headers, params=query_params, timeout=60)
     if method == "POST":
@@ -337,6 +366,7 @@ def extract_all_pages_to_csv(
     query_params: Dict[str, str],
     body_json: Dict[str, Any],
     pagination_cfg: Dict[str, Any],
+    rate_limiter: Optional[RateLimiter] = None,
 ) -> None:
     """Extract all paginated data to CSV automatically."""
     cursor_field_name = pagination_cfg.get("cursor_field")
@@ -425,7 +455,7 @@ def extract_all_pages_to_csv(
         query_params[query_param_name] = next_cursor
 
         try:
-            resp = perform_request(method, url, headers, query_params, body_json)
+            resp = perform_request(method, url, headers, query_params, body_json, rate_limiter)
             print(f"HTTP {resp.status_code}")
             data = parse_response(resp)
         except Exception as e:
@@ -457,8 +487,13 @@ def run_repl(apis: List[Dict[str, Any]], rapidapi_key: str) -> None:
         )
         print(f"Pagination enabled: {supports_pagination}")
 
+        rate_limit = sel.get("rate_limit", 60)
+        rate_limiter = RateLimiter(rate_limit) if rate_limit > 0 else None
+        if rate_limiter:
+            print(f"Rate limiting: {rate_limit} requests per minute")
+
         try:
-            resp = perform_request(method, url, headers, query_params, body_json)
+            resp = perform_request(method, url, headers, query_params, body_json, rate_limiter)
         except Exception as e:
             print(f"Request failed: {e}")
             continue
@@ -489,7 +524,7 @@ def run_repl(apis: List[Dict[str, Any]], rapidapi_key: str) -> None:
             interactive_extract_to_csv(data, append=False)
         elif supports_pagination and out_mode == 3:
             extract_all_pages_to_csv(
-                data, method, url, headers, query_params, body_json, pagination_cfg
+                data, method, url, headers, query_params, body_json, pagination_cfg, rate_limiter
             )
         elif out_mode == len(output_choices) - 2:
             break

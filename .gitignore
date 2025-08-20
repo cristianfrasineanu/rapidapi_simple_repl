@@ -76,3 +76,6 @@ __pypackages__/
 
 # Cython
 cython_debug/
+
+*.csv
+*.json

@@ -13,7 +13,8 @@
       "pagination": {
         "cursor_field": "server_cursor",
         "query_param": "pagination_token"
-      }
+      },
+      "rate_limit": 30
     },
     {
       "name": "Instagram Scraper 2025",
@@ -28,7 +29,8 @@
       "pagination": {
         "cursor_field": "pagination_token",
         "query_param": "pagination_token"
-      }
+      },
+      "rate_limit": 30
     }
   ]
 }
